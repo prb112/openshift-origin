@@ -154,6 +154,7 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 		s.Annotations["service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval"] = "8"
 		s.Annotations["service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold"] = "3"
 		s.Annotations["service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold"] = "2"
+		s.Annotations["spec.allocateLoadBalancerNodePorts"] = "false"
 		// - Azure is hardcoded to 15s (2 failed with 5s interval in 1.17) and is sufficient
 		// - GCP has a non-configurable interval of 32s (3 failed health checks with 8s interval in 1.17)
 		//   - thus pods need to stay up for > 32s, so pod shutdown period will will be 45s
@@ -169,6 +170,17 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 	// Get info to hit it with
 	tcpIngressIP := service.GetIngressPoint(&tcpService.Status.LoadBalancer.Ingress[0])
 	svcPort := int(tcpService.Spec.Ports[0].Port)
+
+        //doc - https://jameshfisher.com/2017/08/03/golang-dns-lookup/
+        ips, err := net.LookupIP(tcpService.Status.LoadBalancer.Ingress[0].Hostname)
+        if err != nil {
+        	// Hostname not resolving yet...
+                fmt.Fprintf(os.Stderr, "Could not get IPs: %v\n", err)
+        }
+        // Logging the hostname IP
+        for _,ip := range ips {
+        	fmt.Printf("hostname. IN A %s\n",ip.String())
+        }
 
 	fmt.Fprintf(os.Stderr, "creating RC to be part of service %v\n", serviceName)
 	rc, err := jig.Run(ctx, func(rc *corev1.ReplicationController) {
@@ -206,7 +218,7 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 
 	// Hit it once before considering ourselves ready
 	fmt.Fprintf(os.Stderr, "hitting pods through the service's LoadBalancer\n")
-	timeout := 10 * time.Minute
+	timeout := 30 * time.Minute
 	// require thirty seconds of passing requests to continue (in case the SLB becomes available and then degrades)
 	// TODO this seems weird to @deads2k, why is status not trustworthy
 	baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(tcpIngressIP, strconv.Itoa(svcPort)))
