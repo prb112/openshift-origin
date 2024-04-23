@@ -10,11 +10,13 @@ import (
 	"os"
 	"strconv"
 	"time"
+	//"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 
 	"github.com/openshift/origin/pkg/monitortestframework"
+	//o "github.com/onsi/gomega"
 
 	configv1 "github.com/openshift/api/config/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
@@ -27,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework/service"
 	k8simage "k8s.io/kubernetes/test/utils/image"
+	//admissionapi "k8s.io/pod-security-admission/api"
 
 	"github.com/openshift/origin/pkg/monitor/backenddisruption"
 	"github.com/openshift/origin/pkg/monitor/monitorapi"
@@ -174,13 +177,21 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
         //doc - https://jameshfisher.com/2017/08/03/golang-dns-lookup/
         ips, err := net.LookupIP(tcpService.Status.LoadBalancer.Ingress[0].Hostname)
         if err != nil {
-        	// Hostname not resolving yet...
+		// Hostname not resolving yet...
                 fmt.Fprintf(os.Stderr, "Could not get IPs: %v\n", err)
         }
         // Logging the hostname IP
         for _,ip := range ips {
-        	fmt.Printf("hostname. IN A %s\n",ip.String())
+		fmt.Printf("hostname. IN A %s\n",ip.String())
         }
+
+	oc := exutil.NewCLIWithoutNamespace("api-requests")
+	if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType{
+		nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
+		if err := getNodes(tcpService, nodeTgt, oc); err != nil {
+			fmt.Printf("skip lb tests on Power")
+		}
+	}
 
 	fmt.Fprintf(os.Stderr, "creating RC to be part of service %v\n", serviceName)
 	rc, err := jig.Run(ctx, func(rc *corev1.ReplicationController) {
@@ -218,7 +229,7 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 
 	// Hit it once before considering ourselves ready
 	fmt.Fprintf(os.Stderr, "hitting pods through the service's LoadBalancer\n")
-	timeout := 30 * time.Minute
+	timeout := 10 * time.Minute
 	// require thirty seconds of passing requests to continue (in case the SLB becomes available and then degrades)
 	// TODO this seems weird to @deads2k, why is status not trustworthy
 	baseURL := fmt.Sprintf("http://%s", net.JoinHostPort(tcpIngressIP, strconv.Itoa(svcPort)))
@@ -352,4 +363,18 @@ func httpGetNoConnectionPoolTimeout(url string, timeout time.Duration) (*http.Re
 	}
 
 	return client.Get(url)
+}
+
+func getNodes(tcpService *corev1.Service, nodeTgt string, oc *exutil.CLI) error {
+	for i := 0; i < 10; i++ {
+		lbTgt := tcpService.Status.LoadBalancer.Ingress[0].Hostname
+		dig, err := oc.AsAdmin().Run("debug").Args(nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt).Output()
+		if err != nil {
+			return nil
+		}
+		if dig != "" {
+			return err
+		}
+	}
+	return nil
 }
