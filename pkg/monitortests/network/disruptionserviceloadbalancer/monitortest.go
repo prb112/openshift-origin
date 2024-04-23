@@ -1,6 +1,7 @@
 package disruptionserviceloadbalancer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	_ "embed"
@@ -8,8 +9,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
+
 	//"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -29,6 +33,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework/service"
 	k8simage "k8s.io/kubernetes/test/utils/image"
+
 	//admissionapi "k8s.io/pod-security-admission/api"
 
 	"github.com/openshift/origin/pkg/monitor/backenddisruption"
@@ -165,32 +170,34 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 	if err != nil {
 		return fmt.Errorf("error creating tcp service: %w", err)
 	}
+
 	tcpService, err = jig.WaitForLoadBalancer(ctx, service.GetServiceLoadBalancerCreationTimeout(ctx, w.kubeClient))
 	if err != nil {
 		return fmt.Errorf("error waiting for load balancer: %w", err)
+	}
+
+	if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType {
+		// Craft the Node to exec to
+		nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
+		if err := checkHostnameReady(tcpService, nodeTgt); err != nil {
+			fmt.Printf("skip lb tests on Power")
+			return err
+		}
 	}
 
 	// Get info to hit it with
 	tcpIngressIP := service.GetIngressPoint(&tcpService.Status.LoadBalancer.Ingress[0])
 	svcPort := int(tcpService.Spec.Ports[0].Port)
 
-        //doc - https://jameshfisher.com/2017/08/03/golang-dns-lookup/
-        ips, err := net.LookupIP(tcpService.Status.LoadBalancer.Ingress[0].Hostname)
-        if err != nil {
+	//doc - https://jameshfisher.com/2017/08/03/golang-dns-lookup/
+	ips, err := net.LookupIP(tcpService.Status.LoadBalancer.Ingress[0].Hostname)
+	if err != nil {
 		// Hostname not resolving yet...
-                fmt.Fprintf(os.Stderr, "Could not get IPs: %v\n", err)
-        }
-        // Logging the hostname IP
-        for _,ip := range ips {
-		fmt.Printf("hostname. IN A %s\n",ip.String())
-        }
-
-	oc := exutil.NewCLIWithoutNamespace("api-requests")
-	if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType{
-		nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
-		if err := getNodes(tcpService, nodeTgt, oc); err != nil {
-			fmt.Printf("skip lb tests on Power")
-		}
+		fmt.Fprintf(os.Stderr, "Could not get IPs: %v\n", err)
+	}
+	// Logging the hostname IP
+	for _, ip := range ips {
+		fmt.Printf("hostname. IN A %s\n", ip.String())
 	}
 
 	fmt.Fprintf(os.Stderr, "creating RC to be part of service %v\n", serviceName)
@@ -365,15 +372,34 @@ func httpGetNoConnectionPoolTimeout(url string, timeout time.Duration) (*http.Re
 	return client.Get(url)
 }
 
-func getNodes(tcpService *corev1.Service, nodeTgt string, oc *exutil.CLI) error {
+/**
+1. Get the pods in the e2e namespace
+2. Start the debug pod oc debug pod/service-test-n986q -- /bin/bash -c dig +short abc.com
+3. Once it succeeds we break the loop
+4. else 30 second sleep
+*/
+
+func checkHostnameReady(tcpService *corev1.Service, nodeTgt string) error {
 	for i := 0; i < 10; i++ {
 		lbTgt := tcpService.Status.LoadBalancer.Ingress[0].Hostname
-		dig, err := oc.AsAdmin().Run("debug").Args(nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt).Output()
-		if err != nil {
-			return nil
+		cmd := exec.Command("oc", "debug", nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt)
+		out := &bytes.Buffer{}
+		errOut := &bytes.Buffer{}
+		cmd.Stdout = out
+		cmd.Stderr = errOut
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to run the command: %v: %v", err, errOut.String())
 		}
-		if dig != "" {
-			return err
+
+		output := strings.TrimSpace(out.String())
+		fmt.Println("output: " + output)
+		if output == "" {
+			fmt.Println("waiting for the LB to come active")
+			time.Sleep(1 * time.Minute)
+			continue
+		} else {
+			break
 		}
 	}
 	return nil
