@@ -1,6 +1,7 @@
 package disruptionserviceloadbalancer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	_ "embed"
@@ -8,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/openshift/origin/pkg/monitortestframework"
@@ -163,6 +166,14 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 	tcpService, err = jig.WaitForLoadBalancer(ctx, service.GetServiceLoadBalancerCreationTimeout(ctx, w.kubeClient))
 	if err != nil {
 		return fmt.Errorf("error waiting for load balancer: %w", err)
+	}
+
+	//Checks if platform is PowerVS or IBMCloud to verify the hostname through the service LoadBalancer
+	if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType {
+		nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
+		if err := checkHostnameReady(tcpService, nodeTgt); err != nil {
+			return err
+		}
 	}
 
 	// Get info to hit it with
@@ -343,4 +354,32 @@ func httpGetNoConnectionPoolTimeout(url string, timeout time.Duration) (*http.Re
 	}
 
 	return client.Get(url)
+}
+
+// checkHostnameReady debugs the master node in the PowerVS or IBMCloud cluster
+// and verifies the hostname is active before hitting through the LoadBalancer
+func checkHostnameReady(tcpService *corev1.Service, nodeTgt string) error {
+	for i := 0; i < 60; i++ {
+		lbTgt := tcpService.Status.LoadBalancer.Ingress[0].Hostname
+		cmd := exec.Command("oc", "debug", nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt)
+		out := &bytes.Buffer{}
+		errOut := &bytes.Buffer{}
+		cmd.Stdout = out
+		cmd.Stderr = errOut
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to run the command: %v: %v", err, errOut.String())
+		}
+
+		output := strings.TrimSpace(out.String())
+		fmt.Println("output: " + output)
+		if output == "" {
+			fmt.Println("waiting for the LB to come active")
+			time.Sleep(1 * time.Minute)
+			continue
+		} else {
+			break
+		}
+	}
+	return nil
 }
