@@ -168,14 +168,6 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 		return fmt.Errorf("error waiting for load balancer: %w", err)
 	}
 
-	//Checks if platform is PowerVS or IBMCloud to verify the hostname through the service LoadBalancer
-	if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType {
-		nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
-		if err := checkHostnameReady(tcpService, nodeTgt); err != nil {
-			return err
-		}
-	}
-
 	// Get info to hit it with
 	tcpIngressIP := service.GetIngressPoint(&tcpService.Status.LoadBalancer.Ingress[0])
 	svcPort := int(tcpService.Spec.Ports[0].Port)
@@ -213,6 +205,15 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 	if err != nil {
 		return fmt.Errorf("error creating PDB: %w", err)
 	}
+
+        // On certain platforms hitting the hostname before it is ready leads to a blackhole, this code checks
+	// the host from the cluster's context
+        if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType {
+                nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
+                if err := checkHostnameReady(tcpService, nodeTgt); err != nil {
+                        return err
+                }
+        }
 
 	// Hit it once before considering ourselves ready
 	fmt.Fprintf(os.Stderr, "hitting pods through the service's LoadBalancer\n")
@@ -356,23 +357,23 @@ func httpGetNoConnectionPoolTimeout(url string, timeout time.Duration) (*http.Re
 	return client.Get(url)
 }
 
-// checkHostnameReady debugs the master node in the PowerVS or IBMCloud cluster
-// and verifies the hostname is active before hitting through the LoadBalancer
+// Uses the first node in the cluster to verify the LoadBalancer host is active before returning
 func checkHostnameReady(tcpService *corev1.Service, nodeTgt string) error {
 	for i := 0; i < 60; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		fmt.Printf("Checking load balancer host is active \n")
 		lbTgt := tcpService.Status.LoadBalancer.Ingress[0].Hostname
-		cmd := exec.Command("oc", "debug", nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt)
+		cmd := exec.CommandContext(ctx, "oc", "debug", nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt)
 		out := &bytes.Buffer{}
 		errOut := &bytes.Buffer{}
 		cmd.Stdout = out
 		cmd.Stderr = errOut
-
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to run the command: %v: %v", err, errOut.String())
 		}
 
 		output := strings.TrimSpace(out.String())
-		fmt.Println("output: " + output)
 		if output == "" {
 			fmt.Println("waiting for the LB to come active")
 			time.Sleep(1 * time.Minute)
