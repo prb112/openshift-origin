@@ -1,7 +1,7 @@
 package disruptionserviceloadbalancer
 
 import (
-	"bytes"
+	//"bytes"
 	"context"
 	"crypto/tls"
 	_ "embed"
@@ -9,7 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
+	//"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -75,7 +75,7 @@ func NewRecordAvailabilityOnly() monitortestframework.MonitorTest {
 	}
 }
 
-func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *rest.Config, recorder monitorapi.RecorderWriter) error {
+func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *rest.Config, recorder monitorapi.RecorderWriter, oc *exutil.CLI) error {
 	var err error
 
 	w.kubeClient, err = kubernetes.NewForConfig(adminRESTConfig)
@@ -210,7 +210,7 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 	// the host from the cluster's context
         if infra.Spec.PlatformSpec.Type == configv1.PowerVSPlatformType || infra.Spec.PlatformSpec.Type == configv1.IBMCloudPlatformType {
                 nodeTgt := "node/" + nodeList.Items[0].ObjectMeta.Name
-                if err := checkHostnameReady(tcpService, nodeTgt); err != nil {
+                if err := checkHostnameReady(tcpService, nodeTgt, oc); err != nil {
                         return err
                 }
         }
@@ -244,7 +244,7 @@ func (w *availability) StartCollection(ctx context.Context, adminRESTConfig *res
 		newConnectionTestName, reusedConnectionTestName,
 		newConnectionDisruptionSampler, reusedConnectionDisruptionSampler,
 	)
-	if err := w.disruptionChecker.StartCollection(ctx, adminRESTConfig, recorder); err != nil {
+	if err := w.disruptionChecker.StartCollection(ctx, adminRESTConfig, recorder, oc); err != nil {
 		return err
 	}
 
@@ -358,22 +358,37 @@ func httpGetNoConnectionPoolTimeout(url string, timeout time.Duration) (*http.Re
 }
 
 // Uses the first node in the cluster to verify the LoadBalancer host is active before returning
-func checkHostnameReady(tcpService *corev1.Service, nodeTgt string) error {
+func checkHostnameReady(tcpService *corev1.Service, nodeTgt string, oc *exutil.CLI) error {
+	var (
+		cargs []string
+                stdOut string
+                err error
+	)
+
 	for i := 0; i < 60; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+		//ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		//defer cancel()
 		fmt.Printf("Checking load balancer host is active \n")
 		lbTgt := tcpService.Status.LoadBalancer.Ingress[0].Hostname
-		cmd := exec.CommandContext(ctx, "oc", "debug", nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt)
-		out := &bytes.Buffer{}
-		errOut := &bytes.Buffer{}
-		cmd.Stdout = out
-		cmd.Stderr = errOut
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to run the command: %v: %v", err, errOut.String())
-		}
+		cargs = []string{nodeTgt + "--" + "/bin/bash" + "-c" + "dig +short" + lbTgt}
+		cargs = append(cargs)
+		wait.Poll(3*time.Second, 60*time.Second, func() (bool, error) {
+			stdOut, _, err = oc.AsAdmin().WithoutNamespace().Run("debug").Args(cargs).Outputs()
+			if err != nil {
+				return false. nil
+			}
+			return true, nil
+		})
+		//cmd := exec.CommandContext(ctx, "oc", "debug", nodeTgt, "--", "/bin/bash", "-c", "dig +short "+lbTgt)
+		//out := &bytes.Buffer{}
+		//errOut := &bytes.Buffer{}
+		//cmd.Stdout = out
+		//cmd.Stderr = errOut
+		//if err := cmd.Run(); err != nil {
+		//	return fmt.Errorf("failed to run the command: %v: %v", err, errOut.String())
+		//}
 
-		output := strings.TrimSpace(out.String())
+		output := strings.TrimSpace(stdOut)
 		if output == "" {
 			fmt.Println("waiting for the LB to come active")
 			time.Sleep(1 * time.Minute)
