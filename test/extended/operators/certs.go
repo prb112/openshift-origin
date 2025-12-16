@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/openshift/api/annotations"
+	configv1client "github.com/openshift/client-go/config/clientset/versioned"
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
@@ -91,16 +92,20 @@ func gatherCertsFromPlatformNamespaces(ctx context.Context, kubeClient kubernete
 var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), g.Ordered, func() {
 	defer g.GinkgoRecover()
 
-	oc := exutil.NewCLIWithoutNamespace("certificate-checker")
-	ctx := context.Background()
+	var (
+		oc           *exutil.CLI
+		configClient configv1client.Interface
+		ctx          = context.Background()
+	)
 
 	g.BeforeAll(func() {
+		oc = exutil.NewCLIWithoutNamespace("certificate-checker")
+		configClient = oc.AdminConfigClient()
 		ctx := context.Background()
 		kubeClient := oc.AdminKubeClient()
 		if ok, _ := exutil.IsMicroShiftCluster(kubeClient); ok {
 			g.Skip("microshift does not auto-collect TLS.")
 		}
-		configClient := oc.AdminConfigClient()
 		if ok, _ := exutil.IsHypershift(ctx, configClient); ok {
 			g.Skip("hypershift does not auto-collect TLS.")
 		}
@@ -139,7 +144,6 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), g
 	})
 
 	g.It("collect certificate data", func() {
-		configClient := oc.AdminConfigClient()
 		featureGates, err := configClient.ConfigV1().FeatureGates().Get(ctx, "cluster", metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
