@@ -85,12 +85,13 @@ func gatherCertsFromPlatformNamespaces(ctx context.Context, kubeClient kubernete
 var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), func() {
 	defer g.GinkgoRecover()
 
+	oc := exutil.NewCLIForMonitorTest("certificate-checker")
+	configClient := oc.AdminConfigClient()
+	kubeClient := oc.AdminKubeClient()
 	ctx := context.Background()
 
 	g.It("collect certificate data", func() {
-		oc := exutil.NewCLIForMonitorTest("certificate-checker")
-		configClient := oc.AdminConfigClient()
-		kubeClient := oc.AdminKubeClient()
+
 		if ok, _ := exutil.IsMicroShiftCluster(kubeClient); ok {
 			g.Skip("microshift does not auto-collect TLS.")
 		}
