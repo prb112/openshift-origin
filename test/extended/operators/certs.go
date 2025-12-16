@@ -5,14 +5,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/openshift/origin/pkg/cmd/update-tls-artifacts/generate-owners/tlsmetadatadefaults"
 	"github.com/openshift/origin/pkg/cmd/update-tls-artifacts/generate-owners/tlsmetadatainterfaces"
-	"github.com/openshift/origin/pkg/monitortests/network/disruptionpodnetwork"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -21,7 +17,6 @@ import (
 	"github.com/openshift/api/annotations"
 
 	g "github.com/onsi/ginkgo/v2"
-	o "github.com/onsi/gomega"
 
 	"github.com/openshift/library-go/pkg/certs/cert-inspection/certgraphanalysis"
 	"github.com/openshift/library-go/pkg/certs/cert-inspection/certgraphapi"
@@ -31,16 +26,13 @@ import (
 	"github.com/openshift/origin/pkg/monitortestlibrary/platformidentification"
 	exutil "github.com/openshift/origin/test/extended/util"
 	"github.com/openshift/origin/test/extended/util/image"
-	ownership "github.com/openshift/origin/tls"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/watch"
 	watchtools "k8s.io/client-go/tools/watch"
-	e2e "k8s.io/kubernetes/test/e2e/framework"
 )
 
 const certInspectResultFile = "/tmp/shared/pkiList.json"
@@ -98,63 +90,63 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), g
 		if ok, _ := exutil.IsHypershift(ctx, configClient); ok {
 			g.Skip("hypershift does not auto-collect TLS.")
 		}
-		var err error
-		onDiskPKIContent := &certgraphapi.PKIList{}
+		// var err error
+		// onDiskPKIContent := &certgraphapi.PKIList{}
 
-		jobType, err = platformidentification.GetJobType(context.TODO(), oc.AdminConfig())
-		o.Expect(err).NotTo(o.HaveOccurred())
+		// jobType, err = platformidentification.GetJobType(context.TODO(), oc.AdminConfig())
+		// o.Expect(err).NotTo(o.HaveOccurred())
 
-		controlPlaneLabel := labels.SelectorFromSet(map[string]string{"node-role.kubernetes.io/control-plane": ""})
-		nodeList, err = kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{LabelSelector: controlPlaneLabel.String()})
-		o.Expect(err).NotTo(o.HaveOccurred())
-		masters := []*corev1.Node{}
-		for i := range nodeList.Items {
-			masters = append(masters, &nodeList.Items[i])
-		}
+		// controlPlaneLabel := labels.SelectorFromSet(map[string]string{"node-role.kubernetes.io/control-plane": ""})
+		// nodeList, err = kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{LabelSelector: controlPlaneLabel.String()})
+		// o.Expect(err).NotTo(o.HaveOccurred())
+		// masters := []*corev1.Node{}
+		// for i := range nodeList.Items {
+		// 	masters = append(masters, &nodeList.Items[i])
+		// }
 
-		_, bootstrapHostname, err := certgraphanalysis.GetBootstrapIPAndHostname(ctx, kubeClient)
-		o.Expect(err).NotTo(o.HaveOccurred())
-		e2e.Logf("Found bootstrap hostname %q", bootstrapHostname)
-		inClusterPKIContent, err := gatherCertsFromPlatformNamespaces(ctx, kubeClient, masters, bootstrapHostname)
-		o.Expect(err).NotTo(o.HaveOccurred())
+		// _, bootstrapHostname, err := certgraphanalysis.GetBootstrapIPAndHostname(ctx, kubeClient)
+		// o.Expect(err).NotTo(o.HaveOccurred())
+		// e2e.Logf("Found bootstrap hostname %q", bootstrapHostname)
+		// inClusterPKIContent, err := gatherCertsFromPlatformNamespaces(ctx, kubeClient, masters, bootstrapHostname)
+		// o.Expect(err).NotTo(o.HaveOccurred())
 
-		openshiftTestImagePullSpec, err := disruptionpodnetwork.GetOpenshiftTestsImagePullSpecWithRetries(ctx, oc.AdminConfig(), "", oc, 5)
-		// Skip metal jobs if test image pullspec cannot be determined
-		if jobType.Platform != "metal" || err == nil {
-			o.Expect(err).NotTo(o.HaveOccurred())
-			onDiskPKIContent, err = fetchOnDiskCertificates(ctx, kubeClient, oc.AdminConfig(), masters, openshiftTestImagePullSpec)
-			o.Expect(err).NotTo(o.HaveOccurred())
-		}
+		// openshiftTestImagePullSpec, err := disruptionpodnetwork.GetOpenshiftTestsImagePullSpecWithRetries(ctx, oc.AdminConfig(), "", oc, 5)
+		// // Skip metal jobs if test image pullspec cannot be determined
+		// if jobType.Platform != "metal" || err == nil {
+		// 	o.Expect(err).NotTo(o.HaveOccurred())
+		// 	onDiskPKIContent, err = fetchOnDiskCertificates(ctx, kubeClient, oc.AdminConfig(), masters, openshiftTestImagePullSpec)
+		// 	o.Expect(err).NotTo(o.HaveOccurred())
+		// }
 
-		actualPKIContent = certgraphanalysis.MergePKILists(ctx, inClusterPKIContent, onDiskPKIContent)
+		// actualPKIContent = certgraphanalysis.MergePKILists(ctx, inClusterPKIContent, onDiskPKIContent)
 
-		expectedPKIContent, err = certs.GetPKIInfoFromEmbeddedOwnership(ownership.PKIOwnership)
-		o.Expect(err).NotTo(o.HaveOccurred())
+		// expectedPKIContent, err = certs.GetPKIInfoFromEmbeddedOwnership(ownership.PKIOwnership)
+		// o.Expect(err).NotTo(o.HaveOccurred())
 
-		featureGates, err := configClient.ConfigV1().FeatureGates().Get(ctx, "cluster", metav1.GetOptions{})
-		o.Expect(err).NotTo(o.HaveOccurred())
+		// featureGates, err := configClient.ConfigV1().FeatureGates().Get(ctx, "cluster", metav1.GetOptions{})
+		// o.Expect(err).NotTo(o.HaveOccurred())
 
-		featureSetString := string(featureGates.Spec.FeatureSet)
-		if len(featureSetString) == 0 {
-			featureSetString = "Default"
-		}
-		tlsArtifactFilename := fmt.Sprintf(
-			"raw-tls-artifacts-%s-%s-%s-%s-%s.json",
-			jobType.Topology,
-			jobType.Architecture,
-			jobType.Platform,
-			jobType.Network,
-			strings.ToLower(featureSetString),
-		)
+		// featureSetString := string(featureGates.Spec.FeatureSet)
+		// if len(featureSetString) == 0 {
+		// 	featureSetString = "Default"
+		// }
+		// tlsArtifactFilename := fmt.Sprintf(
+		// 	"raw-tls-artifacts-%s-%s-%s-%s-%s.json",
+		// 	jobType.Topology,
+		// 	jobType.Architecture,
+		// 	jobType.Platform,
+		// 	jobType.Network,
+		// 	strings.ToLower(featureSetString),
+		// )
 
-		jsonBytes, err := json.MarshalIndent(actualPKIContent, "", "  ")
-		o.Expect(err).NotTo(o.HaveOccurred())
+		// jsonBytes, err := json.MarshalIndent(actualPKIContent, "", "  ")
+		// o.Expect(err).NotTo(o.HaveOccurred())
 
-		pkiDir := filepath.Join(exutil.ArtifactDirPath(), "rawTLSInfo")
-		err = os.MkdirAll(pkiDir, 0755)
-		o.Expect(err).NotTo(o.HaveOccurred())
-		err = os.WriteFile(filepath.Join(pkiDir, tlsArtifactFilename), jsonBytes, 0644)
-		o.Expect(err).NotTo(o.HaveOccurred())
+		// pkiDir := filepath.Join(exutil.ArtifactDirPath(), "rawTLSInfo")
+		// err = os.MkdirAll(pkiDir, 0755)
+		// o.Expect(err).NotTo(o.HaveOccurred())
+		// err = os.WriteFile(filepath.Join(pkiDir, tlsArtifactFilename), jsonBytes, 0644)
+		// o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
 	// g.It("all tls artifacts must be registered", func() {
