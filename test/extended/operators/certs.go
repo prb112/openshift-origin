@@ -95,7 +95,7 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), f
 	configClient := oc.AdminConfigClient()
 	ctx := context.Background()
 
-	g.BeforeAll(func() {
+	g.BeforeEach(func() {
 		kubeClient := oc.AdminKubeClient()
 		if ok, _ := exutil.IsMicroShiftCluster(kubeClient); ok {
 			g.Skip("microshift does not auto-collect TLS.")
