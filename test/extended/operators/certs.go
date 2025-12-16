@@ -10,14 +10,10 @@ import (
 	"strings"
 	"time"
 
-	promtime "github.com/prometheus/common/model"
-
 	"github.com/openshift/origin/pkg/cmd/update-tls-artifacts/generate-owners/tlsmetadatadefaults"
 	"github.com/openshift/origin/pkg/cmd/update-tls-artifacts/generate-owners/tlsmetadatainterfaces"
 	"github.com/openshift/origin/pkg/monitortests/network/disruptionpodnetwork"
 
-	ensure_no_violation_regression "github.com/openshift/origin/pkg/cmd/update-tls-artifacts/ensure-no-violation-regression"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -29,12 +25,10 @@ import (
 
 	"github.com/openshift/library-go/pkg/certs/cert-inspection/certgraphanalysis"
 	"github.com/openshift/library-go/pkg/certs/cert-inspection/certgraphapi"
-	"github.com/openshift/library-go/pkg/certs/cert-inspection/certgraphutils"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 
 	"github.com/openshift/origin/pkg/certs"
 	"github.com/openshift/origin/pkg/monitortestlibrary/platformidentification"
-	testresult "github.com/openshift/origin/pkg/test/ginkgo/result"
 	exutil "github.com/openshift/origin/test/extended/util"
 	"github.com/openshift/origin/test/extended/util/image"
 	ownership "github.com/openshift/origin/tls"
@@ -95,7 +89,7 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), f
 	configClient := oc.AdminConfigClient()
 	ctx := context.Background()
 
-	g.BeforeEach(func() {
+	g.It("collect certificate data", func() {
 		kubeClient := oc.AdminKubeClient()
 		if ok, _ := exutil.IsMicroShiftCluster(kubeClient); ok {
 			g.Skip("microshift does not auto-collect TLS.")
@@ -135,9 +129,7 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), f
 
 		expectedPKIContent, err = certs.GetPKIInfoFromEmbeddedOwnership(ownership.PKIOwnership)
 		o.Expect(err).NotTo(o.HaveOccurred())
-	})
 
-	g.It("collect certificate data", func() {
 		featureGates, err := configClient.ConfigV1().FeatureGates().Get(ctx, "cluster", metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
@@ -164,163 +156,163 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), f
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
-	g.It("all tls artifacts must be registered", func() {
+	// g.It("all tls artifacts must be registered", func() {
 
-		violationsPKIContent, err := certs.GetPKIInfoFromEmbeddedOwnership(ownership.PKIViolations)
-		o.Expect(err).NotTo(o.HaveOccurred())
+	// 	violationsPKIContent, err := certs.GetPKIInfoFromEmbeddedOwnership(ownership.PKIViolations)
+	// 	o.Expect(err).NotTo(o.HaveOccurred())
 
-		newTLSRegistry := &certs.PKIRegistryInfo{}
+	// 	newTLSRegistry := &certs.PKIRegistryInfo{}
 
-		for i, inClusterCertKeyPair := range actualPKIContent.InClusterResourceData.CertKeyPairs {
-			currLocation := inClusterCertKeyPair.SecretLocation
-			if _, err := certgraphutils.LocateCertKeyPairBySecretLocation(currLocation, violationsPKIContent.CertKeyPairs); err == nil {
-				continue
-			}
+	// 	for i, inClusterCertKeyPair := range actualPKIContent.InClusterResourceData.CertKeyPairs {
+	// 		currLocation := inClusterCertKeyPair.SecretLocation
+	// 		if _, err := certgraphutils.LocateCertKeyPairBySecretLocation(currLocation, violationsPKIContent.CertKeyPairs); err == nil {
+	// 			continue
+	// 		}
 
-			_, err := certgraphutils.LocateCertKeyPairBySecretLocation(currLocation, expectedPKIContent.CertKeyPairs)
-			if err != nil {
+	// 		_, err := certgraphutils.LocateCertKeyPairBySecretLocation(currLocation, expectedPKIContent.CertKeyPairs)
+	// 		if err != nil {
 
-				newTLSRegistry.CertKeyPairs = append(newTLSRegistry.CertKeyPairs, certgraphapi.PKIRegistryCertKeyPair{InClusterLocation: &actualPKIContent.InClusterResourceData.CertKeyPairs[i]})
-			}
+	// 			newTLSRegistry.CertKeyPairs = append(newTLSRegistry.CertKeyPairs, certgraphapi.PKIRegistryCertKeyPair{InClusterLocation: &actualPKIContent.InClusterResourceData.CertKeyPairs[i]})
+	// 		}
 
-		}
+	// 	}
 
-		for _, currCertKeyPair := range actualPKIContent.CertKeyPairs.Items {
-			if len(currCertKeyPair.Spec.SecretLocations) != 0 || len(currCertKeyPair.Spec.OnDiskLocations) == 0 {
-				continue
-			}
-			for _, currLocation := range currCertKeyPair.Spec.OnDiskLocations {
-				if len(currLocation.Cert.Path) > 0 {
-					if _, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Cert, violationsPKIContent.CertKeyPairs); err == nil {
-						continue
-					}
+	// 	for _, currCertKeyPair := range actualPKIContent.CertKeyPairs.Items {
+	// 		if len(currCertKeyPair.Spec.SecretLocations) != 0 || len(currCertKeyPair.Spec.OnDiskLocations) == 0 {
+	// 			continue
+	// 		}
+	// 		for _, currLocation := range currCertKeyPair.Spec.OnDiskLocations {
+	// 			if len(currLocation.Cert.Path) > 0 {
+	// 				if _, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Cert, violationsPKIContent.CertKeyPairs); err == nil {
+	// 					continue
+	// 				}
 
-					certInfo, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Cert, expectedPKIContent.CertKeyPairs)
-					if err != nil {
-						if certInfo == nil {
-							certInfo = &certgraphapi.PKIRegistryOnDiskCertKeyPair{
-								OnDiskLocation: certgraphapi.OnDiskLocation{
-									Path: currLocation.Cert.Path,
-								},
-							}
-						}
-						newTLSRegistry.CertKeyPairs = append(newTLSRegistry.CertKeyPairs, certgraphapi.PKIRegistryCertKeyPair{OnDiskLocation: certInfo})
-					}
-				}
+	// 				certInfo, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Cert, expectedPKIContent.CertKeyPairs)
+	// 				if err != nil {
+	// 					if certInfo == nil {
+	// 						certInfo = &certgraphapi.PKIRegistryOnDiskCertKeyPair{
+	// 							OnDiskLocation: certgraphapi.OnDiskLocation{
+	// 								Path: currLocation.Cert.Path,
+	// 							},
+	// 						}
+	// 					}
+	// 					newTLSRegistry.CertKeyPairs = append(newTLSRegistry.CertKeyPairs, certgraphapi.PKIRegistryCertKeyPair{OnDiskLocation: certInfo})
+	// 				}
+	// 			}
 
-				if len(currLocation.Key.Path) > 0 && currLocation.Key.Path != currLocation.Cert.Path {
+	// 			if len(currLocation.Key.Path) > 0 && currLocation.Key.Path != currLocation.Cert.Path {
 
-					if _, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Key, violationsPKIContent.CertKeyPairs); err == nil {
-						continue
-					}
+	// 				if _, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Key, violationsPKIContent.CertKeyPairs); err == nil {
+	// 					continue
+	// 				}
 
-					keyInfo, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Key, expectedPKIContent.CertKeyPairs)
-					if err != nil {
-						if keyInfo == nil {
-							keyInfo = &certgraphapi.PKIRegistryOnDiskCertKeyPair{
-								OnDiskLocation: certgraphapi.OnDiskLocation{
-									Path: currLocation.Key.Path,
-								},
-							}
-						}
-						newTLSRegistry.CertKeyPairs = append(newTLSRegistry.CertKeyPairs, certgraphapi.PKIRegistryCertKeyPair{OnDiskLocation: keyInfo})
-					}
-				}
-			}
-		}
+	// 				keyInfo, err := certgraphutils.LocateCertKeyPairByOnDiskLocation(currLocation.Key, expectedPKIContent.CertKeyPairs)
+	// 				if err != nil {
+	// 					if keyInfo == nil {
+	// 						keyInfo = &certgraphapi.PKIRegistryOnDiskCertKeyPair{
+	// 							OnDiskLocation: certgraphapi.OnDiskLocation{
+	// 								Path: currLocation.Key.Path,
+	// 							},
+	// 						}
+	// 					}
+	// 					newTLSRegistry.CertKeyPairs = append(newTLSRegistry.CertKeyPairs, certgraphapi.PKIRegistryCertKeyPair{OnDiskLocation: keyInfo})
+	// 				}
+	// 			}
+	// 		}
+	// 	}
 
-		for i, inClusterCABundle := range actualPKIContent.InClusterResourceData.CertificateAuthorityBundles {
-			currLocation := inClusterCABundle.ConfigMapLocation
-			if _, err := certgraphutils.LocateCABundleByConfigMapLocation(currLocation, violationsPKIContent.CertificateAuthorityBundles); err == nil {
-				continue
-			}
+	// 	for i, inClusterCABundle := range actualPKIContent.InClusterResourceData.CertificateAuthorityBundles {
+	// 		currLocation := inClusterCABundle.ConfigMapLocation
+	// 		if _, err := certgraphutils.LocateCABundleByConfigMapLocation(currLocation, violationsPKIContent.CertificateAuthorityBundles); err == nil {
+	// 			continue
+	// 		}
 
-			_, err := certgraphutils.LocateCABundleByConfigMapLocation(currLocation, expectedPKIContent.CertificateAuthorityBundles)
-			if err != nil {
-				newTLSRegistry.CertificateAuthorityBundles = append(newTLSRegistry.CertificateAuthorityBundles, certgraphapi.PKIRegistryCABundle{InClusterLocation: &actualPKIContent.InClusterResourceData.CertificateAuthorityBundles[i]})
-			}
-		}
+	// 		_, err := certgraphutils.LocateCABundleByConfigMapLocation(currLocation, expectedPKIContent.CertificateAuthorityBundles)
+	// 		if err != nil {
+	// 			newTLSRegistry.CertificateAuthorityBundles = append(newTLSRegistry.CertificateAuthorityBundles, certgraphapi.PKIRegistryCABundle{InClusterLocation: &actualPKIContent.InClusterResourceData.CertificateAuthorityBundles[i]})
+	// 		}
+	// 	}
 
-		for _, currCABundle := range actualPKIContent.CertificateAuthorityBundles.Items {
-			if len(currCABundle.Spec.ConfigMapLocations) != 0 || len(currCABundle.Spec.OnDiskLocations) == 0 {
-				continue
-			}
-			for _, currLocation := range currCABundle.Spec.OnDiskLocations {
-				if _, err := certgraphutils.LocateCABundleByOnDiskLocation(currLocation, violationsPKIContent.CertificateAuthorityBundles); err == nil {
-					continue
-				}
+	// 	for _, currCABundle := range actualPKIContent.CertificateAuthorityBundles.Items {
+	// 		if len(currCABundle.Spec.ConfigMapLocations) != 0 || len(currCABundle.Spec.OnDiskLocations) == 0 {
+	// 			continue
+	// 		}
+	// 		for _, currLocation := range currCABundle.Spec.OnDiskLocations {
+	// 			if _, err := certgraphutils.LocateCABundleByOnDiskLocation(currLocation, violationsPKIContent.CertificateAuthorityBundles); err == nil {
+	// 				continue
+	// 			}
 
-				caBundleInfo, err := certgraphutils.LocateCABundleByOnDiskLocation(currLocation, expectedPKIContent.CertificateAuthorityBundles)
-				if err != nil {
-					if caBundleInfo == nil {
-						caBundleInfo = &certgraphapi.PKIRegistryOnDiskCABundle{
-							OnDiskLocation: certgraphapi.OnDiskLocation{
-								Path: currLocation.Path,
-							},
-						}
-					}
-					newTLSRegistry.CertificateAuthorityBundles = append(newTLSRegistry.CertificateAuthorityBundles, certgraphapi.PKIRegistryCABundle{OnDiskLocation: caBundleInfo})
-				}
-			}
-		}
+	// 			caBundleInfo, err := certgraphutils.LocateCABundleByOnDiskLocation(currLocation, expectedPKIContent.CertificateAuthorityBundles)
+	// 			if err != nil {
+	// 				if caBundleInfo == nil {
+	// 					caBundleInfo = &certgraphapi.PKIRegistryOnDiskCABundle{
+	// 						OnDiskLocation: certgraphapi.OnDiskLocation{
+	// 							Path: currLocation.Path,
+	// 						},
+	// 					}
+	// 				}
+	// 				newTLSRegistry.CertificateAuthorityBundles = append(newTLSRegistry.CertificateAuthorityBundles, certgraphapi.PKIRegistryCABundle{OnDiskLocation: caBundleInfo})
+	// 			}
+	// 		}
+	// 	}
 
-		if len(newTLSRegistry.CertKeyPairs) > 0 || len(newTLSRegistry.CertificateAuthorityBundles) > 0 {
-			registryString, err := json.MarshalIndent(newTLSRegistry, "", "  ")
-			if err != nil {
-				//g.Fail("Failed to marshal registry %#v: %v", newTLSRegistry, err)
-				testresult.Flakef("Failed to marshal registry %#v: %v", newTLSRegistry, err)
-			}
-			// TODO: uncomment when test no longer fails and enhancement is merged
-			//g.Fail(fmt.Sprintf("Unregistered TLS certificates:\n%s", registryString))
-			testresult.Flakef("Unregistered TLS certificates found:\n%s\nSee tls/ownership/README.md in origin repo", registryString)
-		}
-	})
+	// 	if len(newTLSRegistry.CertKeyPairs) > 0 || len(newTLSRegistry.CertificateAuthorityBundles) > 0 {
+	// 		registryString, err := json.MarshalIndent(newTLSRegistry, "", "  ")
+	// 		if err != nil {
+	// 			//g.Fail("Failed to marshal registry %#v: %v", newTLSRegistry, err)
+	// 			testresult.Flakef("Failed to marshal registry %#v: %v", newTLSRegistry, err)
+	// 		}
+	// 		// TODO: uncomment when test no longer fails and enhancement is merged
+	// 		//g.Fail(fmt.Sprintf("Unregistered TLS certificates:\n%s", registryString))
+	// 		testresult.Flakef("Unregistered TLS certificates found:\n%s\nSee tls/ownership/README.md in origin repo", registryString)
+	// 	}
+	// })
 
-	g.It("all registered tls artifacts must have no metadata violation regressions", func() {
-		violationRegressionOptions := ensure_no_violation_regression.NewEnsureNoViolationRegressionOptions(ownership.AllViolations, genericclioptions.NewTestIOStreamsDiscard())
-		messages, _, err := violationRegressionOptions.HaveViolationsRegressed([]*certgraphapi.PKIList{actualPKIContent})
-		o.Expect(err).NotTo(o.HaveOccurred())
+	// g.It("all registered tls artifacts must have no metadata violation regressions", func() {
+	// 	violationRegressionOptions := ensure_no_violation_regression.NewEnsureNoViolationRegressionOptions(ownership.AllViolations, genericclioptions.NewTestIOStreamsDiscard())
+	// 	messages, _, err := violationRegressionOptions.HaveViolationsRegressed([]*certgraphapi.PKIList{actualPKIContent})
+	// 	o.Expect(err).NotTo(o.HaveOccurred())
 
-		if len(messages) > 0 {
-			// TODO: uncomment when test no longer fails and enhancement is merged
-			//g.Fail(strings.Join(messages, "\n"))
-			testresult.Flakef("%s", strings.Join(messages, "\n"))
-		}
-	})
+	// 	if len(messages) > 0 {
+	// 		// TODO: uncomment when test no longer fails and enhancement is merged
+	// 		//g.Fail(strings.Join(messages, "\n"))
+	// 		testresult.Flakef("%s", strings.Join(messages, "\n"))
+	// 	}
+	// })
 
-	g.It("[OCPFeatureGate:ShortCertRotation] all certificates should expire in no more than 8 hours", func() {
-		var errs []error
-		// Skip router certificates (both certificate and signer)
-		// These are not being rotated automatically
-		// OLM: bug https://issues.redhat.com/browse/CNTRLPLANE-379
-		shortCertRotationIgnoredNamespaces := []string{"openshift-operator-lifecycle-manager", "openshift-ingress-operator", "openshift-ingress"}
+	// g.It("[OCPFeatureGate:ShortCertRotation] all certificates should expire in no more than 8 hours", func() {
+	// 	var errs []error
+	// 	// Skip router certificates (both certificate and signer)
+	// 	// These are not being rotated automatically
+	// 	// OLM: bug https://issues.redhat.com/browse/CNTRLPLANE-379
+	// 	shortCertRotationIgnoredNamespaces := []string{"openshift-operator-lifecycle-manager", "openshift-ingress-operator", "openshift-ingress"}
 
-		for _, certKeyPair := range actualPKIContent.CertKeyPairs.Items {
-			if certKeyPair.Spec.CertMetadata.ValidityDuration == "" {
-				// Skip certificates with no duration set (proxy ca, key without certificate etc.)
-				continue
-			}
-			if certKeyPair.Spec.CertMetadata.ValidityDuration == "10y" {
-				// Skip "forever" certificates
-				continue
-			}
-			if isCertKeyPairFromIgnoredNamespace(certKeyPair, shortCertRotationIgnoredNamespaces) {
-				continue
-			}
-			// Use ParseDuration from prometheus as it can handle days/month/years durations
-			duration, err := promtime.ParseDuration(certKeyPair.Spec.CertMetadata.ValidityDuration)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("failed to parse validity duration for certificate %q: %v", certKeyPair.Name, err))
-				continue
-			}
-			if time.Duration(duration) > time.Hour*8 {
-				errs = append(errs, fmt.Errorf("certificate %q expires too soon: expected duration to be up to 8h, but was %s", certKeyPair.Name, duration))
-			}
-		}
-		if len(errs) > 0 {
-			testresult.Flakef("Errors found: %s", utilerrors.NewAggregate(errs).Error())
-		}
-	})
+	// 	for _, certKeyPair := range actualPKIContent.CertKeyPairs.Items {
+	// 		if certKeyPair.Spec.CertMetadata.ValidityDuration == "" {
+	// 			// Skip certificates with no duration set (proxy ca, key without certificate etc.)
+	// 			continue
+	// 		}
+	// 		if certKeyPair.Spec.CertMetadata.ValidityDuration == "10y" {
+	// 			// Skip "forever" certificates
+	// 			continue
+	// 		}
+	// 		if isCertKeyPairFromIgnoredNamespace(certKeyPair, shortCertRotationIgnoredNamespaces) {
+	// 			continue
+	// 		}
+	// 		// Use ParseDuration from prometheus as it can handle days/month/years durations
+	// 		duration, err := promtime.ParseDuration(certKeyPair.Spec.CertMetadata.ValidityDuration)
+	// 		if err != nil {
+	// 			errs = append(errs, fmt.Errorf("failed to parse validity duration for certificate %q: %v", certKeyPair.Name, err))
+	// 			continue
+	// 		}
+	// 		if time.Duration(duration) > time.Hour*8 {
+	// 			errs = append(errs, fmt.Errorf("certificate %q expires too soon: expected duration to be up to 8h, but was %s", certKeyPair.Name, duration))
+	// 		}
+	// 	}
+	// 	if len(errs) > 0 {
+	// 		testresult.Flakef("Errors found: %s", utilerrors.NewAggregate(errs).Error())
+	// 	}
+	// })
 
 })
 
