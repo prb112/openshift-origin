@@ -99,7 +99,7 @@ var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), g
 	)
 
 	g.BeforeAll(func() {
-		oc = exutil.NewCLIWithoutNamespace("certificate-checker")
+		oc = exutil.NewCLIForMonitorTest("certificate-checker")
 		configClient = oc.AdminConfigClient()
 		ctx := context.Background()
 		kubeClient := oc.AdminKubeClient()
