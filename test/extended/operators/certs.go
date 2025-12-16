@@ -82,10 +82,10 @@ func gatherCertsFromPlatformNamespaces(ctx context.Context, kubeClient kubernete
 	)
 }
 
-var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), func() {
+var _ = g.Describe(fmt.Sprintf("[sig-arch][Late][Jira:%q]", "kube-apiserver"), g.Ordered, func() {
 	defer g.GinkgoRecover()
-
 	oc := exutil.NewCLIForMonitorTest("certificate-checker")
+
 	configClient := oc.AdminConfigClient()
 	kubeClient := oc.AdminKubeClient()
 	ctx := context.Background()
